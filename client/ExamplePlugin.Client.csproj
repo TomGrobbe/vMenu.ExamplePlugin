@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Lands next to fxmanifest.lua, in the client folder the manifest names. -->
+    <OutputPath>$(ResourceRoot)client\</OutputPath>
+
+    <!-- This project copies the manifest and the readme into the resource root. See Directory.Build.targets. -->
+    <IsResourceRootProject>true</IsResourceRootProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Brings CitizenFX's client assemblies with it, so the plugin does not reference those
+      itself. Pin the version to the vMenu your server runs, see Directory.Packages.props.
+    -->
+    <PackageReference Include="vMenu.Enhanced.ClientAPI" />
+  </ItemGroup>
+
+</Project>

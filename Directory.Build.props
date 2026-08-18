@@ -1,0 +1,37 @@
+<Project>
+
+  <!--
+    Shared MSBuild settings for both halves of the plugin. Copy this file into your own
+    plugin and you only have to change the resource name below.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Configurations>Release;Debug</Configurations>
+    <DebugType>embedded</DebugType>
+
+    <!--
+      The name of the folder this resource ends up in on your server. vMenu identifies a
+      plugin by its resource name, so renaming this renames the plugin's permissions and
+      settings with it.
+    -->
+    <ResourceName>vMenu.ExamplePlugin</ResourceName>
+    <ResourceRoot>$(MSBuildThisFileDirectory)build\$(ResourceName)\</ResourceRoot>
+
+    <!--
+      FiveM has no host that resolves NuGet assemblies at runtime, so every assembly the
+      plugin references has to sit next to it in the resource folder. This copies the whole
+      resolved package graph into the output.
+    -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <!-- The .deps.json files are not used by FiveM, so don't generate them. -->
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+
+    <!-- Without this the output lands in a net10.0 subfolder, which the manifest would then have to name. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+</Project>

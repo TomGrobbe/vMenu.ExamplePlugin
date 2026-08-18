@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    The two projects write their assemblies straight into build/<ResourceName>/client and
+    build/<ResourceName>/server. The manifest is not built by anything, so it is copied here
+    instead, which is what turns that folder into a resource you can drop on a server.
+
+    Only ONE project may do the copy: both write to the same destination, and on a parallel
+    build they would fight over the same file. The client project opts in through
+    IsResourceRootProject.
+  -->
+  <ItemGroup Condition="'$(IsResourceRootProject)' == 'true'">
+    <ResourceRootFile Include="$(MSBuildThisFileDirectory)fxmanifest.lua" />
+    <ResourceRootFile Include="$(MSBuildThisFileDirectory)README.md" />
+  </ItemGroup>
+
+  <Target Name="CopyResourceRootFiles"
+          AfterTargets="Build"
+          Condition="'$(IsResourceRootProject)' == 'true'">
+
+    <Copy SourceFiles="@(ResourceRootFile)"
+          DestinationFolder="$(ResourceRoot)"
+          SkipUnchangedFiles="true" />
+
+    <Message Importance="high" Text="Resource ready: $(ResourceRoot)" />
+  </Target>
+
+</Project>

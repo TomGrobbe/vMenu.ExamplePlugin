@@ -1,0 +1,11 @@
+# Build output. The resource is produced here, it is never checked in.
+build/
+
+# Standard .NET leftovers.
+bin/
+obj/
+
+# Visual Studio and Rider.
+.vs/
+.idea/
+*.user

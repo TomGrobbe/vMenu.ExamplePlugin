@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      Its own folder, never the client one. The client and the server packages each ship
+      their own copy of CitizenFX.Base.dll and CitizenFX.FiveM.Shared.dll, so one shared
+      folder means one side overwrites the other's and that side loads the wrong assemblies.
+    -->
+    <OutputPath>$(ResourceRoot)server\</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Brings CitizenFX's server assemblies with it, so the plugin does not reference those
+      itself. Pin the version to the vMenu your server runs, see Directory.Packages.props.
+    -->
+    <PackageReference Include="vMenu.Enhanced.ServerAPI" />
+  </ItemGroup>
+
+</Project>

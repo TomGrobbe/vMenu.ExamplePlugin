@@ -1,0 +1,16 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+  </Configurations>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="fxmanifest.lua" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path="nuget.config" />
+  </Folder>
+  <Project Path="client/ExamplePlugin.Client.csproj" />
+  <Project Path="server/ExamplePlugin.Server.csproj" />
+</Solution>
