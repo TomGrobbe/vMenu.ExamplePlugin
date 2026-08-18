@@ -1,18 +1,16 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-
-    <!-- Needed for the wildcard versions below. Drop it once you pin a real version. -->
-    <CentralPackageFloatingVersionsEnabled>true</CentralPackageFloatingVersionsEnabled>
   </PropertyGroup>
   <ItemGroup>
     <!--
       Both halves of the vMenu plugin API. Their version always matches the vMenu Enhanced
-      release they belong to, so on a live server pin these to the vMenu version that server
-      runs, for example Version="1.2.3". The wildcard here takes whatever is newest, which is
-      what an example that tracks an alpha wants and what a real plugin does not.
+      release they belong to, so pin these to the vMenu version your server actually runs and
+      raise them when you update vMenu. Pinned rather than floating: a plugin that silently
+      follows the newest package is a plugin that breaks on a vMenu release nobody tested it
+      against, and during an alpha that is not a distant worry.
     -->
-    <PackageVersion Include="vMenu.Enhanced.ClientAPI" Version="*-*" />
-    <PackageVersion Include="vMenu.Enhanced.ServerAPI" Version="*-*" />
+    <PackageVersion Include="vMenu.Enhanced.ClientAPI" Version="0.0.1-alpha.69" />
+    <PackageVersion Include="vMenu.Enhanced.ServerAPI" Version="0.0.1-alpha.69" />
   </ItemGroup>
 </Project>

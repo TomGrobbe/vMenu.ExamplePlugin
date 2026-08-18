@@ -2,6 +2,8 @@
 
 A complete, working plugin for [vMenu Enhanced](https://github.com/TomGrobbe/vMenu), the version of vMenu that runs on FiveM Enhanced. It exists to be read and copied. Everything a plugin can do is in here once, with a comment next to it.
 
+The written documentation lives at [docs.vespura.com](https://docs.vespura.com/vmenu/enhanced/plugins/), for players, server owners and developers alike. This README covers this repository specifically.
+
 ## What a plugin actually is
 
 A plugin is just a normal FiveM resource of your own, written in C#. It does not live inside vMenu, it does not patch vMenu, and vMenu does not need to know it exists before it starts. Your resource says hello to vMenu over an event, hands it a description of the menu you want, and vMenu draws that menu inside itself under a **Plugins** entry on its main menu.
@@ -38,28 +40,35 @@ Copy that `vMenu.ExamplePlugin` folder into your server's `resources` folder and
 
 ## Where the packages come from
 
-The two NuGet packages this plugin uses, `vMenu.Enhanced.ClientAPI` and `vMenu.Enhanced.ServerAPI`, are published alongside every vMenu Enhanced release. Their version number is always the same as the vMenu release they belong to, so pin them to the vMenu version your server actually runs. That is what `Directory.Packages.props` is for: one line each, in one file.
+The two NuGet packages this plugin uses come straight from nuget.org, nothing else to set up:
 
-While vMenu Enhanced is still in alpha, `nuget.config` also points at `..\vMenu\vMenu\build\packages`, which is where a local build of the vMenu repository puts its packages. That lets you build this plugin against a vMenu you built yourself. If you have no vMenu checkout next to this one, nothing breaks, NuGet simply looks there, finds nothing, and uses nuget.org instead.
+- [`vMenu.Enhanced.ClientAPI`](https://www.nuget.org/packages/vMenu.Enhanced.ClientAPI/), used by the client half
+- [`vMenu.Enhanced.ServerAPI`](https://www.nuget.org/packages/vMenu.Enhanced.ServerAPI/), used by the server half
+
+They pull in [`vMenu.Enhanced.PluginContracts`](https://www.nuget.org/packages/vMenu.Enhanced.PluginContracts/) by themselves, which is the shared protocol between vMenu and a plugin and not something you reference on your own.
+
+Both versions are pinned in one place, `Directory.Packages.props`, one line each. The package version always matches the vMenu Enhanced release it belongs to, so set it to the vMenu version your server actually runs, and raise it when you update vMenu. It is pinned rather than floating on purpose. A plugin that quietly follows whatever is newest is a plugin that breaks on a vMenu release nobody tested it against, and while Enhanced is in alpha that happens often enough to matter.
+
+vMenu Enhanced is still in alpha, so the versions are prerelease ones like `0.0.1-alpha.69`. NuGet only offers you a prerelease when you ask for it by name, which pinning does.
 
 ## Permissions and settings
 
-Start the plugin once, with vMenu running. vMenu then writes two template files for the server owner, in a folder named after your resource:
+Start the plugin once, with vMenu running. vMenu then writes two template files for the server owner, both named after your resource:
 
 ```
-vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin/permissions.cfg.example
-vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin/configuration.cfg.example
+vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin.permissions.cfg.example
+vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin.configuration.cfg.example
 ```
 
 They work exactly like vMenu's own templates. Copy each one, drop the `.example` off the copy's name, edit the copy, and execute it from `server.cfg` above the line that starts vMenu:
 
 ```
-exec @vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin/permissions.cfg
-exec @vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin/configuration.cfg
+exec @vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin.permissions.cfg
+exec @vMenu.Enhanced/config/plugins/vMenu.ExamplePlugin.configuration.cfg
 ensure vMenu.Enhanced
 ```
 
-Every plugin gets a folder of its own like this. Nothing of yours is written into vMenu's own `permissions.cfg` or `configuration.cfg`, so a server owner who removes your plugin removes one folder and is done.
+Every plugin gets its own pair like this, in that one `plugins` folder. Nothing of yours is written into vMenu's own `permissions.cfg` or `configuration.cfg`, so a server owner who removes your plugin deletes the files carrying its name and is done.
 
 The names in those files are built from your resource name. This plugin declares a permission called `Greet`, and it comes out as `vMenu.Enhanced.Plugins.vMenu_ExamplePlugin.Greet`. Dots and dashes in a resource name are not allowed inside a permission name, so they turn into underscores.
 
