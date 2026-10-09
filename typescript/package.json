@@ -1,0 +1,17 @@
+{
+  "name": "vmenu-example-plugin-typescript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc --noEmit && node build.mjs"
+  },
+  "dependencies": {
+    "@vespura/vmenu-plugin": "0.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
