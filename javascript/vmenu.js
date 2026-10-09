@@ -1,4 +1,4 @@
-// vMenu Enhanced plugin API for JavaScript, built for vMenu Enhanced v0.0.0-local.
+// vMenu Enhanced plugin API for JavaScript, built for vMenu Enhanced v1.0.8.
 // Copy this file into your resource and load it before your own scripts, see https://docs.vespura.com/vmenu/enhanced/plugins/javascript/
 "use strict";
 var vMenu = (() => {
@@ -57,7 +57,7 @@ var vMenu = (() => {
   });
 
   // src/version.ts
-  var version = true ? "0.0.0-local" : "0.0.0-local";
+  var version = true ? "1.0.8" : "0.0.0-local";
 
   // src/text.ts
   var Text = class _Text {
