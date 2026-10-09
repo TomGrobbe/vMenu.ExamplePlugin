@@ -1,0 +1,207 @@
+name: Release
+
+# Builds the example in every language. On main it also tags a new version and publishes one zip per
+# language. The daily package update calls this directly, because a push made with the workflow token
+# never starts other workflows.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: The ref to build and release.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.ref || github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      previous: ${{ steps.version.outputs.previous }}
+      release: ${{ steps.version.outputs.release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      # A patch bump from the last tag. A commit message containing +semver: major or +semver: minor bumps
+      # that part instead, and +semver: none builds without releasing.
+      - name: Work out the version
+        id: version
+        shell: bash
+        run: |
+          PREVIOUS=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
+          RELEASE=true
+
+          if [ -z "$PREVIOUS" ]; then
+            VERSION=1.0.0
+          else
+            RANGE="$PREVIOUS..HEAD"
+            MESSAGES=$(git log "$RANGE" --format=%B)
+            IFS=. read -r MAJOR MINOR PATCH <<< "${PREVIOUS#v}"
+
+            if [ -z "$(git rev-list "$RANGE")" ]; then
+              echo "Nothing new since $PREVIOUS."
+              RELEASE=false
+              VERSION="${PREVIOUS#v}"
+            elif echo "$MESSAGES" | grep -q '+semver: none'; then
+              RELEASE=false
+              VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            elif echo "$MESSAGES" | grep -q '+semver: major'; then
+              VERSION="$((MAJOR + 1)).0.0"
+            elif echo "$MESSAGES" | grep -q '+semver: minor'; then
+              VERSION="$MAJOR.$((MINOR + 1)).0"
+            else
+              VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            fi
+          fi
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RELEASE=false
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "previous=$PREVIOUS"
+            echo "release=$RELEASE"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Version $VERSION, release: $RELEASE."
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: csharp/global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build C#
+        run: dotnet build csharp/vMenu.ExamplePlugin.slnx -c Release
+
+      - name: Build TypeScript
+        working-directory: typescript
+        run: |
+          npm ci
+          npm run build
+
+      # Lua and JavaScript need no build, their folder already is the resource.
+      - name: Collect the resources
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir -p dist
+
+          cp -r csharp/build/vMenu.ExamplePlugin.CSharp dist/
+          cp -r typescript/build/vMenu.ExamplePlugin.TypeScript dist/
+          cp -r lua dist/vMenu.ExamplePlugin.Lua
+          cp -r javascript dist/vMenu.ExamplePlugin.JavaScript
+
+          for RESOURCE in dist/*/; do
+            sed -i "s/versiongoeshere/$VERSION/" "$RESOURCE/fxmanifest.lua"
+            NAME=$(basename "$RESOURCE")
+            (cd dist && zip -q -r -X "../$NAME.zip" "$NAME")
+            echo "Built $NAME.zip"
+          done
+
+      - name: Upload zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: resources
+          path: vMenu.ExamplePlugin.*.zip
+
+  release:
+    name: Release
+    needs: build
+    if: needs.build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.build.outputs.version }}
+      PREVIOUS: ${{ needs.build.outputs.previous }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          fetch-depth: 0
+
+      - name: Download zips
+        uses: actions/download-artifact@v4
+        with:
+          name: resources
+          path: release-assets
+
+      - name: Tag and release
+        shell: bash
+        run: |
+          TAG="v$VERSION"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
+          CSHARP=$(sed -n 's/.*Include="vMenu.Enhanced.ClientAPI" Version="\([^"]*\)".*/\1/p' csharp/Directory.Packages.props)
+          TYPESCRIPT=$(node -p "require('./typescript/package.json').dependencies['@vespura/vmenu-plugin']")
+          stamped() {
+            head -n 1 "$1" | tr -d '\r' | sed -n 's/.*built for vMenu Enhanced v\(.*\)\.$/\1/p'
+          }
+
+          LUA=$(stamped lua/vmenu.lua)
+          JAVASCRIPT=$(stamped javascript/vmenu.js)
+
+          {
+            echo "The vMenu example plugin, once per language. Unzip the one you want into your server's \`resources\` folder and \`ensure\` it."
+            echo ""
+            echo "| Language | Download | Built against vMenu |"
+            echo "| --- | --- | --- |"
+            echo "| C# | \`vMenu.ExamplePlugin.CSharp.zip\` | $CSHARP |"
+            echo "| Lua | \`vMenu.ExamplePlugin.Lua.zip\` | $LUA |"
+            echo "| JavaScript | \`vMenu.ExamplePlugin.JavaScript.zip\` | $JAVASCRIPT |"
+            echo "| TypeScript | \`vMenu.ExamplePlugin.TypeScript.zip\` | $TYPESCRIPT |"
+            echo ""
+            echo "## Changes"
+
+            if [ -n "$PREVIOUS" ]; then
+              git log "$PREVIOUS..$TAG" --pretty=format:'- `%h` %s'
+            else
+              git log "$TAG" --pretty=format:'- `%h` %s'
+            fi
+
+            echo ""
+            echo ""
+            echo "Docs: [making a vMenu plugin](https://docs.vespura.com/vmenu/enhanced/plugins/developing/)."
+          } > release_notes.md
+
+          gh release create "$TAG" --verify-tag --title "vMenu Example Plugin $TAG" --notes-file release_notes.md release-assets/*.zip
