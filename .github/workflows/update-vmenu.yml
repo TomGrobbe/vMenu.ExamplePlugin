@@ -1,0 +1,184 @@
+name: Update vMenu packages
+
+# Once a day, looks for a newer vMenu plugin API in every form the examples use: the NuGet packages, the
+# npm package, and the vmenu.lua and vmenu.js files inside vMenu's latest Enhanced zip. Only vMenu's own
+# packages are touched. When anything moved, every example is built to prove it still works, the change
+# is committed to main, and a new release is cut.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-vmenu
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  update:
+    name: Check for a newer vMenu
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: csharp/global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Update what moved
+        id: update
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Anything that is not a version yet, like an unstamped local build, counts as older.
+          newer() {
+            [ -n "$2" ] || return 1
+            [[ "$1" =~ ^[0-9] ]] || return 0
+            [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$2" ]
+          }
+
+          stamped() {
+            head -n 1 "$1" | tr -d '\r' | sed -n 's/.*built for vMenu Enhanced v\(.*\)\.$/\1/p'
+          }
+
+          UPDATED=()
+          HIGHEST=""
+
+          moved() {
+            UPDATED+=("$1 $2 to $3")
+            if [ -z "$HIGHEST" ] || newer "$HIGHEST" "$3"; then HIGHEST="$3"; fi
+          }
+
+          CURRENT=$(sed -n 's/.*Include="vMenu.Enhanced.ClientAPI" Version="\([^"]*\)".*/\1/p' csharp/Directory.Packages.props)
+          LATEST=$(curl -sf https://api.nuget.org/v3-flatcontainer/vmenu.enhanced.clientapi/index.json \
+            | jq -r '.versions[] | select(test("-") | not)' | sort -V | tail -n 1 || true)
+
+          if newer "$CURRENT" "$LATEST"; then
+            sed -i -E "s/(Include=\"vMenu\.Enhanced\.(ClientAPI|ServerAPI)\" Version=\")[^\"]*/\1$LATEST/" csharp/Directory.Packages.props
+            moved "NuGet" "$CURRENT" "$LATEST"
+          fi
+
+          CURRENT=$(node -p "require('./typescript/package.json').dependencies['@vespura/vmenu-plugin']")
+          LATEST=$(npm view @vespura/vmenu-plugin@latest version 2>/dev/null || true)
+
+          # npm's own 0.0.0-stage stand-in and the 0.0.1 placeholder are never real vMenu versions.
+          if [[ "$LATEST" == *-* || "$LATEST" == 0.* ]]; then
+            echo "Ignoring npm version '$LATEST', it is not a vMenu release."
+            LATEST=""
+          fi
+
+          if newer "$CURRENT" "$LATEST"; then
+            (cd typescript && npm install "@vespura/vmenu-plugin@$LATEST" --save-exact --no-audit --no-fund)
+            moved "npm" "$CURRENT" "$LATEST"
+          fi
+
+          # The Lua and JavaScript files ship inside the vMenu Enhanced zip, in its plugin-api folder.
+          DOWNLOADS=$(mktemp -d)
+          ZIP_URL=$(gh api repos/TomGrobbe/vMenu/releases/latest \
+            --jq '.assets[] | select(.name | startswith("vMenu-Enhanced-v") and endswith(".zip")) | .browser_download_url' | head -n 1 || true)
+
+          if [ -n "$ZIP_URL" ] && curl -sfL "$ZIP_URL" -o "$DOWNLOADS/vmenu.zip"; then
+            unzip -q -o "$DOWNLOADS/vmenu.zip" -d "$DOWNLOADS/vmenu" || true
+          else
+            echo "Could not download the latest vMenu Enhanced zip."
+          fi
+
+          for FILE in lua/vmenu.lua javascript/vmenu.js; do
+            NAME=$(basename "$FILE")
+            SOURCE=$(find "$DOWNLOADS" -path '*plugin-api*' -name "$NAME" -print -quit 2>/dev/null || true)
+
+            if [ -z "$SOURCE" ]; then
+              echo "The latest vMenu Enhanced zip has no plugin-api/$NAME."
+              continue
+            fi
+
+            CURRENT=$(stamped "$FILE")
+            LATEST=$(stamped "$SOURCE")
+
+            if newer "$CURRENT" "$LATEST"; then
+              cp "$SOURCE" "$FILE"
+              moved "$NAME" "$CURRENT" "$LATEST"
+            fi
+          done
+
+          if [ ${#UPDATED[@]} -eq 0 ]; then
+            echo "Everything already uses the newest vMenu plugin API."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          printf 'Updated %s\n' "${UPDATED[@]}"
+
+          {
+            echo "changed=true"
+            echo "version=$HIGHEST"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build C#
+        if: steps.update.outputs.changed == 'true'
+        run: dotnet build csharp/vMenu.ExamplePlugin.slnx -c Release
+
+      - name: Build TypeScript
+        if: steps.update.outputs.changed == 'true'
+        working-directory: typescript
+        run: |
+          npm ci
+          npm run build
+
+      - name: Commit
+        id: commit
+        shell: bash
+        env:
+          VERSION: ${{ steps.update.outputs.version }}
+        run: |
+          if [ "${{ steps.update.outputs.changed }}" != "true" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A csharp typescript lua javascript
+          git commit -m "chore(deps): update the vMenu plugin api to $VERSION"
+          git push origin HEAD:main
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Release
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+
+    permissions:
+      contents: write
+
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: main
+    secrets: inherit
