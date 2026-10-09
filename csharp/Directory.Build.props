@@ -17,7 +17,7 @@
       plugin by its resource name, so renaming this renames the plugin's permissions and
       settings with it.
     -->
-    <ResourceName>vMenu.ExamplePlugin</ResourceName>
+    <ResourceName>vMenu.ExamplePlugin.CSharp</ResourceName>
     <ResourceRoot>$(MSBuildThisFileDirectory)build\$(ResourceName)\</ResourceRoot>
 
     <!--

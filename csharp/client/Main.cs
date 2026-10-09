@@ -35,7 +35,7 @@ public sealed class Main : IScript
             persist: true);
 
         music.Description = Text.Key("example.music.desc");
-        music.Changed += on => SharedAPI.Log.Info($"[ExamplePlugin] Music is now {(on ? "on" : "off")}.");
+        music.Changed += on => SharedAPI.Log.Info($"[{plugin.Resource}] Music is now {(on ? "on" : "off")}.");
 
         var mood = plugin.RootMenu.AddList(
             Text.Key("example.mood"),
@@ -54,7 +54,7 @@ public sealed class Main : IScript
 
         var volume = extras.Menu.AddSlider(Text.Key("example.volume"), min: 0, max: 10, position: 5);
         volume.Description = Text.Key("example.volume.desc");
-        volume.Moved += (_, position) => SharedAPI.Log.Info($"[ExamplePlugin] Volume is now {position}.");
+        volume.Moved += (_, position) => SharedAPI.Log.Info($"[{plugin.Resource}] Volume is now {position}.");
 
         var ask = extras.Menu.AddButton(Text.Key("example.ask"));
         ask.Description = Text.Key("example.ask.desc");
@@ -87,7 +87,7 @@ public sealed class Main : IScript
 
         var result = await plugin.ConnectAsync();
 
-        API.Log.Info($"[ExamplePlugin] Registered with vMenu: {result.Accepted}.");
+        API.Log.Info($"[{plugin.Resource}] Registered with vMenu: {result.Accepted}.");
     }
 
     private static Text MoodName(int index) =>
@@ -99,7 +99,7 @@ public sealed class Main : IScript
     {
         plugin.Translations.Add("en", new Dictionary<string, string>
         {
-            ["example.name"] = "Example Plugin",
+            ["example.name"] = "Example Plugin (C#)",
             ["example.description"] = "Shows what a plugin can do.",
             ["example.subtitle"] = "Example Plugin Menu",
 
@@ -118,7 +118,7 @@ public sealed class Main : IScript
 
             ["example.extras"] = "Extras",
             ["example.extras.desc"] = "A submenu of this plugin, holding the rows that need a little more room.",
-            ["example.extras.subtitle"] = "Example Plugin",
+            ["example.extras.subtitle"] = "Example Plugin (C#)",
 
             ["example.volume"] = "Volume",
             ["example.volume.desc"] = "A slider. Move it left and right, its position is logged.",
@@ -138,7 +138,7 @@ public sealed class Main : IScript
 
         plugin.Translations.Add("nl", new Dictionary<string, string>
         {
-            ["example.name"] = "Voorbeeldplugin",
+            ["example.name"] = "Voorbeeldplugin (C#)",
             ["example.description"] = "Laat zien wat een plugin kan.",
             ["example.subtitle"] = "Voorbeeldplugin Menu",
 
@@ -157,7 +157,7 @@ public sealed class Main : IScript
 
             ["example.extras"] = "Extra's",
             ["example.extras.desc"] = "Een submenu van deze plugin, met de rijen die wat meer ruimte nodig hebben.",
-            ["example.extras.subtitle"] = "Voorbeeldplugin",
+            ["example.extras.subtitle"] = "Voorbeeldplugin (C#)",
 
             ["example.volume"] = "Volume",
             ["example.volume.desc"] = "Een schuifbalk. Schuif hem heen en weer, zijn stand komt in de log.",
