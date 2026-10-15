@@ -1,4 +1,4 @@
--- vMenu Enhanced plugin API for Lua, built for vMenu Enhanced v1.0.9.
+-- vMenu Enhanced plugin API for Lua, built for vMenu Enhanced v1.0.11.
 -- Copy this file into your resource and load it as a shared_script before your own scripts, see https://docs.vespura.com/vmenu/enhanced/plugins/lua/
 
 local PROTOCOL_VERSION = 2
@@ -528,7 +528,7 @@ end
 
 vMenu = {
     ---The vMenu Enhanced version this file was built for.
-    Version = '1.0.9',
+    Version = '1.0.11',
     Text = Text,
     Gate = Gate,
 }
