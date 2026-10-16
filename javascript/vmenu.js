@@ -1,4 +1,4 @@
-// vMenu Enhanced plugin API for JavaScript, built for vMenu Enhanced v1.0.11.
+// vMenu Enhanced plugin API for JavaScript, built for vMenu Enhanced v1.0.15.
 // Copy this file into your resource and load it before your own scripts, see https://docs.vespura.com/vmenu/enhanced/plugins/javascript/
 "use strict";
 var vMenu = (() => {
@@ -24,7 +24,9 @@ var vMenu = (() => {
   var iife_exports = {};
   __export(iife_exports, {
     Gate: () => Gate,
+    MenuPriority: () => MenuPriority,
     NotifyStyle: () => NotifyStyle,
+    OpenMenuResult: () => OpenMenuResult,
     PluginBoolSetting: () => PluginBoolSetting,
     PluginButton: () => PluginButton,
     PluginCheckbox: () => PluginCheckbox,
@@ -57,7 +59,7 @@ var vMenu = (() => {
   });
 
   // src/version.ts
-  var version = true ? "1.0.11" : "0.0.0-local";
+  var version = true ? "1.0.15" : "0.0.0-local";
 
   // src/text.ts
   var Text = class _Text {
@@ -192,7 +194,9 @@ var vMenu = (() => {
   }
 
   // src/protocol.ts
-  var PROTOCOL_VERSION = 2;
+  var PROTOCOL_VERSION = 3;
+  var BASE_PROTOCOL_VERSION = 2;
+  var MAX_STANDALONE_MENUS = 50;
   var SERVER_PROTOCOL_VERSION = 1;
   var VMENU_RESOURCE = "vMenu.Enhanced";
   var PluginEvents = {
@@ -213,6 +217,7 @@ var vMenu = (() => {
     registerResultFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:RegisterResult`,
     eventFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:Event`,
     promptResultFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:PromptResult`,
+    openResultFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:OpenResult`,
     themesFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:Themes`,
     themesRegisteredFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:ThemesRegistered`,
     serverReadyFor: (resource) => `vMenu.Enhanced:Plugins:${resource}:Server:Ready`,
@@ -234,6 +239,8 @@ var vMenu = (() => {
     Opened: "opened",
     Closed: "closed",
     IndexChanged: "indexChanged",
+    Replaced: "replaced",
+    ForceClosed: "forceClosed",
     Highlighted: "highlighted"
   };
   var SettingTypes = {
@@ -256,6 +263,8 @@ var vMenu = (() => {
     MenuOpened: "menuOpened",
     MenuClosed: "menuClosed",
     MenuIndexChanged: "menuIndexChanged",
+    MenuReplaced: "menuReplaced",
+    MenuForceClosed: "menuForceClosed",
     PlayerActionSelected: "playerActionSelected",
     PlayerActionConfirmed: "playerActionConfirmed",
     PlayerActionListSelected: "playerActionListSelected",
@@ -292,6 +301,7 @@ var vMenu = (() => {
     SetMenuEvents: "setMenuEvents",
     SetFilter: "setFilter",
     ClearFilter: "clearFilter",
+    AddStandaloneMenu: "addStandaloneMenu",
     AddKeys: "addKeys",
     SetKeyText: "setKeyText",
     SetKeyEnabled: "setKeyEnabled",
@@ -974,6 +984,37 @@ var vMenu = (() => {
   };
 
   // src/client/menu.ts
+  var MenuPriority = {
+    /** Only opens when no vMenu or plugin menu is open. */
+    None: "none",
+    /** Replaces vMenu's menus and other menus at low priority. */
+    Low: "low",
+    /** Replaces anything at low or medium priority. */
+    Medium: "medium",
+    /**
+     * Replaces anything that is not locked. Only use this in extreme situations, prevents vMenu or other plugins with a
+     * lower priority from opening any menus while yours is open. Use responsibly!
+     */
+    High: "high"
+  };
+  var OpenMenuResult = {
+    /** The menu is on screen. */
+    Opened: "opened",
+    /** A menu with a higher priority is open, or any menu is open for a request at `None`. */
+    BlockedByPriority: "blockedByPriority",
+    /** Another menu asked not to be closed. */
+    BlockedByLock: "blockedByLock",
+    /** vMenu does not know this menu, for example an empty root menu, which has no row yet. */
+    UnknownMenu: "unknownMenu",
+    /** The player is not allowed into this menu, for example because a gate on the row leading to it fails. */
+    NotAllowed: "notAllowed",
+    /** A later open or close in the same batch took its place. */
+    Superseded: "superseded",
+    /** The plugin is not connected to vMenu, or vMenu stopped before it answered. */
+    NotConnected: "notConnected",
+    /** The vMenu this plugin talks to predates open priorities. Nothing was opened, use `open()` there instead. */
+    NotSupported: "notSupported"
+  };
   var PluginMenu = class _PluginMenu {
     /** @internal */
     constructor(plugin, node, title, subtitle) {
@@ -986,6 +1027,8 @@ var vMenu = (() => {
       this.opened = new Signal(() => plugin.resource, "opened");
       this.closed = new Signal(() => plugin.resource, "closed");
       this.indexChanged = new Signal(() => plugin.resource, "indexChanged");
+      this.replaced = new Signal(() => plugin.resource, "replaced");
+      this.forceClosed = new Signal(() => plugin.resource, "forceClosed");
     }
     /** The menu's id, how vMenu refers to it. */
     get id() {
@@ -1213,9 +1256,52 @@ var vMenu = (() => {
       this.node.items.length = 0;
       this.plugin.emitOp({ op: UpdateOps.ClearMenu, menuId: this.id });
     }
-    /** Opens this menu on screen, closing whatever vMenu menu was open. */
+    /** Opens this menu on screen at low priority, closing whatever vMenu menu was open. Use `requestOpen` to learn whether it worked. */
     open() {
       this.plugin.emitOp({ op: UpdateOps.OpenMenu, menuId: this.id });
+    }
+    /**
+     * Opens this menu only when no vMenu or plugin menu is open, so it never interrupts the player. Switching between your
+     * own menus always works.
+     */
+    requestOpen() {
+      return this.requestOpenWithPriority(MenuPriority.None);
+    }
+    /**
+     * Opens this menu, closing an open menu of equal or lower priority. A menu with a higher priority, or one that asked
+     * not to be closed, keeps the screen and the request is refused.
+     *
+     * @param priority `High`: only use this in extreme situations, prevents vMenu or other plugins with a lower priority
+     * from opening any menus while yours is open. Use responsibly!
+     * @param doNotClose Only with `High`. Only use this in extreme situations. It blocks the player from using anything
+     * else, so always close the menu as soon as possible. The lock ends when you close the menu or open its parent, and
+     * the player can still force it shut by holding back.
+     * @throws When `doNotClose` is set below `High`.
+     */
+    requestOpenWithPriority(priority, doNotClose = false) {
+      if (!Object.values(MenuPriority).includes(priority)) {
+        throw new Error(`'${String(priority)}' is not a menu priority.`);
+      }
+      if (doNotClose && priority !== MenuPriority.High) {
+        throw new Error("doNotClose only works with MenuPriority.High.");
+      }
+      return this.plugin.requestOpen(this, priority, doNotClose);
+    }
+    /** Called when another plugin's menu took the screen while the player was in this one. `onClosed` fires as well. */
+    onReplaced(handler) {
+      const unsubscribe = this.replaced.add(handler);
+      this.subscribeMenuEvent(NodeEvents.Replaced);
+      return unsubscribe;
+    }
+    /**
+     * Called when this menu was opened with `doNotClose` and closed by anything other than your own code: the player
+     * holding back to force it shut, or vMenu having to close it. Whatever the player was in the middle of was left
+     * unfinished.
+     */
+    onForceClosed(handler) {
+      const unsubscribe = this.forceClosed.add(handler);
+      this.subscribeMenuEvent(NodeEvents.ForceClosed);
+      return unsubscribe;
     }
     /** Closes this plugin's menu if one is open. */
     close() {
@@ -1260,6 +1346,12 @@ var vMenu = (() => {
             this.indexChanged.fire(callback.oldIndex ?? 0, callback.newIndex);
           }
           break;
+        case CallbackTypes.MenuReplaced:
+          this.replaced.fire();
+          break;
+        case CallbackTypes.MenuForceClosed:
+          this.forceClosed.fire();
+          break;
       }
     }
     /** @internal */
@@ -1267,8 +1359,12 @@ var vMenu = (() => {
       if (!node.menu) {
         return node;
       }
-      const { items: _items, ...menu } = node.menu;
-      return { ...node, menu: { ...menu, items: [] } };
+      return { ...node, menu: _PluginMenu.withoutItems(node.menu) };
+    }
+    /** @internal */
+    static withoutItems(node) {
+      const { items: _items, ...menu } = node;
+      return { ...menu, items: [] };
     }
     newNode(type, text, options) {
       return { id: options?.id ?? this.plugin.nextItemId(), type, text: Text.toRef(text) };
@@ -1598,6 +1694,8 @@ var vMenu = (() => {
       this.menusById = /* @__PURE__ */ new Map();
       this.keysById = /* @__PURE__ */ new Map();
       this.pendingPrompts = /* @__PURE__ */ new Map();
+      this.pendingOpens = /* @__PURE__ */ new Map();
+      this.standalone = [];
       this.pendingItems = /* @__PURE__ */ new Set();
       this.pendingMenus = /* @__PURE__ */ new Set();
       this.dirtyFilters = [];
@@ -1605,6 +1703,8 @@ var vMenu = (() => {
       this.nextItem = 0;
       this.nextMenu = 0;
       this.nextPrompt = 0;
+      this.nextOpen = 0;
+      this.vMenuProtocol = 0;
       this.handlersRegistered = false;
       this.connected = false;
       this.resource = currentResource();
@@ -1617,6 +1717,10 @@ var vMenu = (() => {
       this.registrationAnswered = new Signal(() => this.resource, "registration answered");
       this.disconnected = new Signal(() => this.resource, "disconnected");
       this.registerMenu(this.rootMenu);
+    }
+    /** Menus added with `addStandaloneMenu`. */
+    get standaloneMenus() {
+      return this.standalone;
     }
     /** Creates the plugin. One per resource: a second call returns the first instance. */
     static create(displayName) {
@@ -1651,6 +1755,38 @@ var vMenu = (() => {
       this.ensureHandlers();
       emitLocal(PluginEvents.Probe);
       return this.firstResult;
+    }
+    /**
+     * Adds a top level menu of your own, outside vMenu's Plugins menu. It has no row anywhere and no toggle key: only your
+     * code opens it, through `menu.requestOpen()`. Needs a vMenu that knows standalone menus, an older one refuses the
+     * registration. Adding one after connecting appears live.
+     *
+     * @param id Letters, digits and underscores, unique within your plugin. "root" and "m" followed by digits are taken
+     * by the menus the API names itself.
+     * @throws When the id is malformed, reserved or already used, when the plugin already has 50 standalone menus, or when
+     * it is connected to a vMenu that predates standalone menus.
+     */
+    addStandaloneMenu(id, title, subtitle) {
+      if (!/^[A-Za-z0-9_]+$/.test(id)) {
+        throw new Error("A standalone menu id may only contain letters, digits and underscores.");
+      }
+      if (id === "root" || /^m\d+$/.test(id)) {
+        throw new Error(`'${id}' is reserved for the menus the API names itself.`);
+      }
+      if (this.menusById.has(id)) {
+        throw new Error(`A menu with id '${id}' already exists.`);
+      }
+      if (this.standalone.length >= MAX_STANDALONE_MENUS) {
+        throw new Error(`A plugin may have at most ${MAX_STANDALONE_MENUS} standalone menus.`);
+      }
+      if (this.connected && this.vMenuProtocol < PROTOCOL_VERSION) {
+        throw new Error("The vMenu this plugin is connected to predates standalone menus. Update vMenu.");
+      }
+      const menu = new PluginMenu(this, { id, title: Text.toRef(title), subtitle: Text.toRef(subtitle), items: [] }, title, subtitle);
+      this.registerMenu(menu);
+      this.standalone.push(menu);
+      this.emitOp({ op: UpdateOps.AddStandaloneMenu, menu: menu.node });
+      return menu;
     }
     /** Shows a message through vMenu's notification area, credited to your resource. */
     notify(style, text, durationMs) {
@@ -1748,6 +1884,9 @@ var vMenu = (() => {
       if (this.carriedByPendingAdd(op)) {
         return;
       }
+      if (op.op === UpdateOps.AddStandaloneMenu && op.menu) {
+        this.pendingMenus.add(op.menu.id);
+      }
       if (op.op === UpdateOps.AddItems) {
         for (const node of op.items ?? []) {
           this.pendingItems.add(node.id);
@@ -1757,6 +1896,19 @@ var vMenu = (() => {
         }
       }
       batch.push(op);
+    }
+    /** @internal */
+    requestOpen(menu, priority, doNotClose) {
+      if (!this.connected) {
+        return Promise.resolve(OpenMenuResult.NotConnected);
+      }
+      if (this.vMenuProtocol < PROTOCOL_VERSION) {
+        return Promise.resolve(OpenMenuResult.NotSupported);
+      }
+      const requestId = ++this.nextOpen;
+      const pending = new Promise((resolve) => this.pendingOpens.set(requestId, resolve));
+      this.emitOp({ op: UpdateOps.OpenMenu, menuId: menu.id, priority, doNotClose: doNotClose || void 0, requestId });
+      return pending;
     }
     /** @internal */
     filterChanged(menu) {
@@ -1828,9 +1980,15 @@ var vMenu = (() => {
       return false;
     }
     send(ops) {
-      const payload = ops.map(
-        (op) => op.op === UpdateOps.AddItems && op.items ? { ...op, items: op.items.map(PluginMenu.asAdded) } : op
-      );
+      const payload = ops.map((op) => {
+        if (op.op === UpdateOps.AddItems && op.items) {
+          return { ...op, items: op.items.map(PluginMenu.asAdded) };
+        }
+        if (op.op === UpdateOps.AddStandaloneMenu && op.menu) {
+          return { ...op, menu: PluginMenu.withoutItems(op.menu) };
+        }
+        return op;
+      });
       emitLocal(PluginEvents.Update, JSON.stringify({ ops: payload }));
     }
     ensureHandlers() {
@@ -1838,23 +1996,30 @@ var vMenu = (() => {
         return;
       }
       this.handlersRegistered = true;
-      onLocal(PluginEvents.Ready, () => this.sendRegistration());
-      onLocal(PluginEvents.readyFor(this.resource), () => this.sendRegistration());
+      onLocal(PluginEvents.Ready, (protocolVersion) => this.onReady(protocolVersion));
+      onLocal(PluginEvents.readyFor(this.resource), (protocolVersion) => this.onReady(protocolVersion));
       onLocal(PluginEvents.registerResultFor(this.resource), (json) => this.onRegisterResult(json));
       onLocal(PluginEvents.eventFor(this.resource), (json) => this.onCallback(json));
       onLocal(PluginEvents.promptResultFor(this.resource), (json) => this.onPromptResult(json));
+      onLocal(PluginEvents.openResultFor(this.resource), (json) => this.onOpenResult(json));
       onLocal(PluginEvents.themesFor(this.resource), (json) => this.themes.handle(json));
       onLocal("onResourceStop", (stopped) => this.onResourceStop(stopped));
+    }
+    onReady(protocolVersion) {
+      this.vMenuProtocol = typeof protocolVersion === "number" ? protocolVersion : 0;
+      this.sendRegistration();
     }
     sendRegistration() {
       emitLocal(PluginEvents.Register, JSON.stringify(this.buildRequest()));
     }
     buildRequest() {
       const request = {
-        protocolVersion: PROTOCOL_VERSION,
+        // Only a plugin that needs a newer vMenu says so, so everything else still registers with an older one.
+        protocolVersion: this.standalone.length > 0 ? PROTOCOL_VERSION : BASE_PROTOCOL_VERSION,
         displayName: Text.toRef(this.displayName),
         descriptionKey: this.descriptionKey,
         menu: this.rootMenu.node,
+        standaloneMenus: this.standalone.length > 0 ? this.standalone.map((menu) => menu.node) : void 0,
         playerActions: this.playerActions.nodes.length > 0 ? this.playerActions.nodes : void 0
       };
       if (Object.keys(this.translations.tables).length > 0) {
@@ -1880,6 +2045,7 @@ var vMenu = (() => {
       this.connected = result.accepted;
       if (!this.connected) {
         this.cancelPendingPrompts();
+        this.cancelPendingOpens();
       } else {
         this.batch(() => {
           for (const menu of this.menusById.values()) {
@@ -1902,7 +2068,9 @@ var vMenu = (() => {
         switch (callback.type) {
           case CallbackTypes.MenuOpened:
           case CallbackTypes.MenuClosed:
-          case CallbackTypes.MenuIndexChanged: {
+          case CallbackTypes.MenuIndexChanged:
+          case CallbackTypes.MenuReplaced:
+          case CallbackTypes.MenuForceClosed: {
             const menu = callback.menuId === void 0 ? void 0 : this.menusById.get(callback.menuId);
             menu?.handleMenu(callback);
             break;
@@ -1936,6 +2104,25 @@ var vMenu = (() => {
         pending(result);
       }
     }
+    onOpenResult(json) {
+      const result = parseJson(json);
+      if (!result) {
+        return;
+      }
+      const pending = this.pendingOpens.get(result.requestId);
+      if (!pending) {
+        return;
+      }
+      this.pendingOpens.delete(result.requestId);
+      const known = Object.values(OpenMenuResult);
+      pending(known.includes(result.reason) ? result.reason : OpenMenuResult.BlockedByPriority);
+    }
+    cancelPendingOpens() {
+      for (const pending of this.pendingOpens.values()) {
+        pending(OpenMenuResult.NotConnected);
+      }
+      this.pendingOpens.clear();
+    }
     cancelPendingPrompts() {
       for (const pending of this.pendingPrompts.values()) {
         pending({ requestId: 0, cancelled: true, busy: false });
@@ -1948,6 +2135,7 @@ var vMenu = (() => {
       }
       this.connected = false;
       this.cancelPendingPrompts();
+      this.cancelPendingOpens();
       this.disconnected.fire();
     }
   };
