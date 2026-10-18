@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && node build.mjs"
   },
   "dependencies": {
-    "@vespura/vmenu-plugin": "1.0.15"
+    "@vespura/vmenu-plugin": "1.0.16"
   },
   "devDependencies": {
     "esbuild": "0.28.2",
