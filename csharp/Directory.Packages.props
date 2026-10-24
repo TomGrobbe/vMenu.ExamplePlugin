@@ -10,7 +10,7 @@
       follows the newest package is a plugin that breaks on a vMenu release nobody tested it
       against, and during an alpha that is not a distant worry.
     -->
-    <PackageVersion Include="vMenu.Enhanced.ClientAPI" Version="1.0.18" />
-    <PackageVersion Include="vMenu.Enhanced.ServerAPI" Version="1.0.18" />
+    <PackageVersion Include="vMenu.Enhanced.ClientAPI" Version="1.0.19" />
+    <PackageVersion Include="vMenu.Enhanced.ServerAPI" Version="1.0.19" />
   </ItemGroup>
 </Project>

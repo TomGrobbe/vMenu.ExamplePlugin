@@ -1,4 +1,4 @@
--- vMenu Enhanced plugin API for Lua, built for vMenu Enhanced v1.0.18.
+-- vMenu Enhanced plugin API for Lua, built for vMenu Enhanced v1.0.19.
 -- Copy this file into your resource and load it as a shared_script before your own scripts, see https://docs.vespura.com/vmenu/enhanced/plugins/lua/
 
 local PROTOCOL_VERSION = 3
@@ -554,7 +554,7 @@ end
 
 vMenu = {
     ---The vMenu Enhanced version this file was built for.
-    Version = '1.0.18',
+    Version = '1.0.19',
     Text = Text,
     Gate = Gate,
     ---How hard `menu:RequestOpenWithPriority` may push. vMenu's own menus always count as `None`.
